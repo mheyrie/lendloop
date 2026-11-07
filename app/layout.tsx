@@ -5,6 +5,7 @@ import { Fraunces, Inter } from "next/font/google";
 import { ConvexClientProvider } from "@/components/ConvexClientProvider";
 import "./globals.css";
 
+//here
 const display = Fraunces({ subsets: ["latin"], variable: "--font-display", weight: ["600", "700"] });
 const sans = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
