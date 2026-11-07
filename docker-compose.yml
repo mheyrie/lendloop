@@ -1,0 +1,26 @@
+# Local n8n for LendLoop. Usage: cp .env.n8n.example .env.n8n && docker compose up -d
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:1.88.0 # pinned; bump deliberately
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678" # bind to localhost only
+    env_file: .env.n8n # secrets live here (git-ignored), never in workflow JSON
+    environment:
+      GENERIC_TIMEZONE: UTC
+      TZ: UTC
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false" # Code nodes read LENDLOOP_* config via $env
+      NODE_FUNCTION_ALLOW_BUILTIN: crypto # HMAC signing in Code nodes
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "336" # hours; keep 14 days of execution logs
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # reach a local Convex backend on the host
+
+volumes:
+  n8n_data:

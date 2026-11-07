@@ -1,0 +1,97 @@
+{
+  "id": "LendLoopErrorHandler",
+  "name": "LendLoop – Error handler",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "On workflow error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "id": "error-trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Config: n8n Variables ($vars, n8n Cloud) first, then environment ($env, self-hosted).\nfunction cfg(name) {\n  try { if (typeof $vars !== 'undefined' && $vars[name]) return $vars[name]; } catch (e) {}\n  try { if ($env[name]) return $env[name]; } catch (e) {}\n  return undefined;\n}\n\n// HMAC-SHA256 request signing for calls to Convex (same scheme as convex/lib/hmac.ts).\n// The secret lives in the n8n environment, never in this workflow JSON.\nfunction signFor(method, path, body) {\n  const crypto = require('crypto');\n  const secret = cfg('LENDLOOP_API_SECRET');\n  if (!secret) throw new Error('LENDLOOP_API_SECRET is not set (n8n Variable or env var)');\n  const timestamp = Math.floor(Date.now() / 1000).toString();\n  const hex = crypto.createHmac('sha256', secret).update(`${timestamp}.${method}.${path}.${body}`).digest('hex');\n  const base = cfg('LENDLOOP_CONVEX_SITE_URL');\n  if (!base) throw new Error('LENDLOOP_CONVEX_SITE_URL is not set (n8n Variable or env var)');\n  return { timestamp, signature: `v1=${hex}`, url: base.replace(/\\/$/, '') + path };\n}\n\n// Report any failed LendLoop execution to Convex so it shows up in Admin → Automation health.\n// Strip email addresses from error text (data minimisation) and cap the length.\nconst d = $input.first().json;\nconst scrub = (s) => String(s ?? 'Unknown error').replace(/[\\w.+-]+@[\\w-]+\\.[\\w.-]+/g, '[email]').slice(0, 1000);\nconst report = {\n  executionId: String(d.execution?.id ?? `trigger-${Date.now()}`),\n  workflowName: d.workflow?.name ?? 'unknown',\n  lastNode: d.execution?.lastNodeExecuted,\n  message: scrub(d.execution?.error?.message ?? d.trigger?.error?.message),\n};\nconsole.error(`[LendLoop ERROR] ${report.workflowName} (execution ${report.executionId}) at ${report.lastNode}: ${report.message}`);\nconst body = JSON.stringify(report);\nreturn [{ json: { ...signFor('POST', '/n8n/workflow-errors', body), body } }];"
+      },
+      "name": "Build error report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "id": "build-error-report"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-lendloop-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-lendloop-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}"
+      },
+      "name": "Report to Convex",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "id": "report-to-convex",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 3000
+    }
+  ],
+  "connections": {
+    "On workflow error": {
+      "main": [
+        [
+          {
+            "node": "Build error report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build error report": {
+      "main": [
+        [
+          {
+            "node": "Report to Convex",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

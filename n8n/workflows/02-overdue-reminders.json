@@ -1,0 +1,339 @@
+{
+  "id": "LendLoopOverdueReminders",
+  "name": "LendLoop – Daily overdue reminders",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "LendLoopErrorHandler",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "timezone": "UTC"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Every day 09:00 UTC",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "id": "daily"
+    },
+    {
+      "parameters": {},
+      "name": "Run now (testing)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "id": "manual"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Config: n8n Variables ($vars, n8n Cloud) first, then environment ($env, self-hosted).\nfunction cfg(name) {\n  try { if (typeof $vars !== 'undefined' && $vars[name]) return $vars[name]; } catch (e) {}\n  try { if ($env[name]) return $env[name]; } catch (e) {}\n  return undefined;\n}\n\n// HMAC-SHA256 request signing for calls to Convex (same scheme as convex/lib/hmac.ts).\n// The secret lives in the n8n environment, never in this workflow JSON.\nfunction signFor(method, path, body) {\n  const crypto = require('crypto');\n  const secret = cfg('LENDLOOP_API_SECRET');\n  if (!secret) throw new Error('LENDLOOP_API_SECRET is not set (n8n Variable or env var)');\n  const timestamp = Math.floor(Date.now() / 1000).toString();\n  const hex = crypto.createHmac('sha256', secret).update(`${timestamp}.${method}.${path}.${body}`).digest('hex');\n  const base = cfg('LENDLOOP_CONVEX_SITE_URL');\n  if (!base) throw new Error('LENDLOOP_CONVEX_SITE_URL is not set (n8n Variable or env var)');\n  return { timestamp, signature: `v1=${hex}`, url: base.replace(/\\/$/, '') + path };\n}\n\nreturn [{ json: signFor('GET', '/n8n/overdue-loans', '') }];"
+      },
+      "name": "Sign request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "id": "sign-request"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-lendloop-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-lendloop-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "name": "Fetch overdue loans",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "id": "fetch-overdue-loans",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Config: n8n Variables ($vars, n8n Cloud) first, then environment ($env, self-hosted).\nfunction cfg(name) {\n  try { if (typeof $vars !== 'undefined' && $vars[name]) return $vars[name]; } catch (e) {}\n  try { if ($env[name]) return $env[name]; } catch (e) {}\n  return undefined;\n}\n\n// One item per overdue loan. Convex already excludes loans reminded today.\nconst res = $input.first().json;\nif (!Array.isArray(res.loans)) throw new Error('Unexpected response from /n8n/overdue-loans');\nconsole.log(`[LendLoop reminders] ${res.count} overdue loan(s) for ${res.date}`);\nreturn res.loans.map((l) => ({ json: l }));"
+      },
+      "name": "Split loans",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "id": "split-loans"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Config: n8n Variables ($vars, n8n Cloud) first, then environment ($env, self-hosted).\nfunction cfg(name) {\n  try { if (typeof $vars !== 'undefined' && $vars[name]) return $vars[name]; } catch (e) {}\n  try { if ($env[name]) return $env[name]; } catch (e) {}\n  return undefined;\n}\n\n// Retries with exponential backoff, then reports failure instead of throwing,\n// so the outcome is always written back to Convex.\nasync function withRetry(fn, attempts = 3) {\n  let lastError;\n  for (let i = 0; i < attempts; i++) {\n    try { return { ok: true, value: await fn(), attempts: i + 1 }; }\n    catch (e) {\n      lastError = e;\n      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 1000 * 2 ** i));\n    }\n  }\n  return { ok: false, error: String(lastError?.message ?? lastError).slice(0, 200), attempts };\n}\nconst maskEmail = (e) => String(e).replace(/^(.).*(@.*)$/, '$1***$2');\n\n// MOCK reminder channel (logs). Swap send() for an email/Slack node in production.\nconst results = [];\nfor (const item of $input.all()) {\n  const l = item.json;\n  const text = `Hi ${l.borrower.firstName}, a friendly nudge: ${l.toolName} was due back on ${l.endDate} ` +\n    `(${l.daysOverdue} day${l.daysOverdue === 1 ? '' : 's'} ago). Please return it or message the lender.`;\n  const r = await withRetry(async () => {\n    if (cfg('LENDLOOP_SIMULATE_FAILURE') === 'true') throw new Error('Simulated reminder provider outage');\n    console.log(`[LendLoop reminder] to=${maskEmail(l.borrower.email)} loan=${l.loanId} text=\"${text}\"`);\n    return 'mock-log';\n  });\n  results.push({ json: {\n    loanId: l.loanId,\n    reminderKey: l.reminderKey,\n    status: r.ok ? 'sent' : 'failed',\n    channel: 'mock-log',\n    detail: r.ok ? `${l.daysOverdue} day(s) overdue` : r.error,\n  } });\n}\nreturn results;"
+      },
+      "name": "Send reminders (mock)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "id": "send-reminders-mock"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Config: n8n Variables ($vars, n8n Cloud) first, then environment ($env, self-hosted).\nfunction cfg(name) {\n  try { if (typeof $vars !== 'undefined' && $vars[name]) return $vars[name]; } catch (e) {}\n  try { if ($env[name]) return $env[name]; } catch (e) {}\n  return undefined;\n}\n\n// HMAC-SHA256 request signing for calls to Convex (same scheme as convex/lib/hmac.ts).\n// The secret lives in the n8n environment, never in this workflow JSON.\nfunction signFor(method, path, body) {\n  const crypto = require('crypto');\n  const secret = cfg('LENDLOOP_API_SECRET');\n  if (!secret) throw new Error('LENDLOOP_API_SECRET is not set (n8n Variable or env var)');\n  const timestamp = Math.floor(Date.now() / 1000).toString();\n  const hex = crypto.createHmac('sha256', secret).update(`${timestamp}.${method}.${path}.${body}`).digest('hex');\n  const base = cfg('LENDLOOP_CONVEX_SITE_URL');\n  if (!base) throw new Error('LENDLOOP_CONVEX_SITE_URL is not set (n8n Variable or env var)');\n  return { timestamp, signature: `v1=${hex}`, url: base.replace(/\\/$/, '') + path };\n}\n\nreturn $input.all().map((item) => {\n  const r = item.json;\n  const body = JSON.stringify({\n    idempotencyKey: r.reminderKey, // reminder:<loanId>:<date> — at most one reminder row per loan per day\n    loanId: r.loanId,\n    kind: 'reminder',\n    status: r.status,\n    channel: r.channel,\n    detail: r.detail,\n  });\n  return { json: { ...signFor('POST', '/n8n/automation-events', body), body, status: r.status } };\n});"
+      },
+      "name": "Sign reminder write-backs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ],
+      "id": "sign-reminder-write-backs"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-lendloop-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-lendloop-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}"
+      },
+      "name": "Record reminder status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        300
+      ],
+      "id": "record-reminder-status",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Config: n8n Variables ($vars, n8n Cloud) first, then environment ($env, self-hosted).\nfunction cfg(name) {\n  try { if (typeof $vars !== 'undefined' && $vars[name]) return $vars[name]; } catch (e) {}\n  try { if ($env[name]) return $env[name]; } catch (e) {}\n  return undefined;\n}\n\nconst all = $('Sign reminder write-backs').all().map((i) => i.json);\nconst failed = all.filter((r) => r.status === 'failed').length;\nconsole.log(`[LendLoop reminders] done: ${all.length - failed} sent, ${failed} failed`);\nreturn [{ json: { total: all.length, failed } }];"
+      },
+      "name": "Summarize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        300
+      ],
+      "id": "summarize"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "any-failures?-c",
+              "leftValue": "={{ $json.failed > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Any failures?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ],
+      "id": "any-failures"
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ $json.failed + ' of ' + $json.total + ' reminders failed (status recorded in Convex)' }}"
+      },
+      "name": "Fail execution",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1980,
+        200
+      ],
+      "id": "fail-execution"
+    }
+  ],
+  "connections": {
+    "Every day 09:00 UTC": {
+      "main": [
+        [
+          {
+            "node": "Sign request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now (testing)": {
+      "main": [
+        [
+          {
+            "node": "Sign request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign request": {
+      "main": [
+        [
+          {
+            "node": "Fetch overdue loans",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch overdue loans": {
+      "main": [
+        [
+          {
+            "node": "Split loans",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split loans": {
+      "main": [
+        [
+          {
+            "node": "Send reminders (mock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send reminders (mock)": {
+      "main": [
+        [
+          {
+            "node": "Sign reminder write-backs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign reminder write-backs": {
+      "main": [
+        [
+          {
+            "node": "Record reminder status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record reminder status": {
+      "main": [
+        [
+          {
+            "node": "Summarize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize": {
+      "main": [
+        [
+          {
+            "node": "Any failures?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any failures?": {
+      "main": [
+        [
+          {
+            "node": "Fail execution",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  }
+}

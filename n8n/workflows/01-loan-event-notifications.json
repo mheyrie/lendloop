@@ -1,0 +1,367 @@
+{
+  "id": "LendLoopLoanEvents",
+  "name": "LendLoop – Loan event notifications",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "LendLoopErrorHandler",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "timezone": "UTC"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lendloop-loan-events",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "name": "Loan event webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "id": "loan-event-webhook",
+      "webhookId": "5b2c3f0e-7f1a-4d7e-9a51-1e4d1009a001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Config: n8n Variables ($vars, n8n Cloud) first, then environment ($env, self-hosted).\nfunction cfg(name) {\n  try { if (typeof $vars !== 'undefined' && $vars[name]) return $vars[name]; } catch (e) {}\n  try { if ($env[name]) return $env[name]; } catch (e) {}\n  return undefined;\n}\n\n// Verify the HMAC signature Convex put on this webhook before trusting anything in it.\nconst crypto = require('crypto');\nconst secret = cfg('LENDLOOP_N8N_WEBHOOK_SECRET');\nif (!secret) throw new Error('LENDLOOP_N8N_WEBHOOK_SECRET is not set (n8n Variable or env var)');\n\nconst item = $input.first();\nconst headers = item.json.headers || {};\nconst timestamp = headers['x-lendloop-timestamp'];\nconst signature = headers['x-lendloop-signature'];\n// Must match the pathname of N8N_LOAN_EVENTS_WEBHOOK_URL configured in Convex.\nconst path = cfg('LENDLOOP_WEBHOOK_PATH') || '/webhook/lendloop-loan-events';\n\n// Prefer the exact raw bytes; fall back to re-serialising the parsed body.\nlet raw;\nif (item.binary && item.binary.data) {\n  raw = (await this.helpers.getBinaryDataBuffer(0, 'data')).toString('utf8');\n} else {\n  raw = JSON.stringify(item.json.body);\n}\n\nlet reason = null;\nconst now = Math.floor(Date.now() / 1000);\nif (!timestamp || !signature) reason = 'missing signature headers';\nelse if (!/^\\d+$/.test(timestamp) || Math.abs(now - Number(timestamp)) > 300) reason = 'timestamp outside tolerance';\nelse {\n  const expected = Buffer.from('v1=' + crypto.createHmac('sha256', secret).update(`${timestamp}.POST.${path}.${raw}`).digest('hex'));\n  const given = Buffer.from(String(signature));\n  if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) reason = 'signature mismatch';\n}\nif (reason) {\n  console.warn(`[LendLoop] rejected webhook: ${reason}`);\n  return [{ json: { valid: false } }];\n}\n\n// Data minimisation: keep only the fields the notification needs; drop headers etc.\nconst e = JSON.parse(raw);\nreturn [{ json: {\n  valid: true,\n  eventId: e.eventId,\n  eventType: e.eventType,\n  loanId: e.loan.id,\n  startDate: e.loan.startDate,\n  endDate: e.loan.endDate,\n  toolName: e.toolName,\n  recipientFirstName: e.recipient.firstName,\n  recipientEmail: e.recipient.email,\n  actorFirstName: e.actorFirstName,\n} }];"
+      },
+      "name": "Verify signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "id": "verify-signature"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "signature-valid?-c",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Signature valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "id": "signature-valid"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": \"unauthorized\" } }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "name": "Reject (401)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        480
+      ],
+      "id": "reject-401"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Config: n8n Variables ($vars, n8n Cloud) first, then environment ($env, self-hosted).\nfunction cfg(name) {\n  try { if (typeof $vars !== 'undefined' && $vars[name]) return $vars[name]; } catch (e) {}\n  try { if ($env[name]) return $env[name]; } catch (e) {}\n  return undefined;\n}\n\nconst e = $input.first().json;\nconst range = e.startDate === e.endDate ? e.startDate : `${e.startDate} to ${e.endDate}`;\nconst templates = {\n  'loan.requested': [`${e.actorFirstName} wants to borrow your ${e.toolName}`, `${e.actorFirstName} asked to borrow your ${e.toolName} (${range}). Approve or decline it under Incoming requests.`],\n  'loan.approved':  [`Your request for ${e.toolName} was approved`, `${e.actorFirstName} approved your request for ${e.toolName} (${range}).`],\n  'loan.declined':  [`Your request for ${e.toolName} was declined`, `Your request for ${e.toolName} (${range}) wasn't approved this time.`],\n  'loan.cancelled': [`A request for ${e.toolName} was cancelled`, `The request for ${e.toolName} (${range}) was cancelled.`],\n  'loan.returned':  [`${e.toolName} marked as returned`, `${e.actorFirstName} confirmed ${e.toolName} is back. Thanks for borrowing responsibly!`],\n};\nconst t = templates[e.eventType];\nif (!t) throw new Error(`Unknown event type: ${e.eventType}`);\nreturn [{ json: { ...e, subject: t[0], text: `Hi ${e.recipientFirstName},\\n\\n${t[1]}\\n\\n— LendLoop` } }];"
+      },
+      "name": "Compose message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        200
+      ],
+      "id": "compose-message"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Config: n8n Variables ($vars, n8n Cloud) first, then environment ($env, self-hosted).\nfunction cfg(name) {\n  try { if (typeof $vars !== 'undefined' && $vars[name]) return $vars[name]; } catch (e) {}\n  try { if ($env[name]) return $env[name]; } catch (e) {}\n  return undefined;\n}\n\n// Retries with exponential backoff, then reports failure instead of throwing,\n// so the outcome is always written back to Convex.\nasync function withRetry(fn, attempts = 3) {\n  let lastError;\n  for (let i = 0; i < attempts; i++) {\n    try { return { ok: true, value: await fn(), attempts: i + 1 }; }\n    catch (e) {\n      lastError = e;\n      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 1000 * 2 ** i));\n    }\n  }\n  return { ok: false, error: String(lastError?.message ?? lastError).slice(0, 200), attempts };\n}\nconst maskEmail = (e) => String(e).replace(/^(.).*(@.*)$/, '$1***$2');\n\n// MOCK notification channel: logs to the n8n container output.\n// Replace the body of send() with a Send Email / Slack / Discord call (credentials in n8n) for real delivery.\nconst n = $input.first().json;\nasync function send() {\n  if (cfg('LENDLOOP_SIMULATE_FAILURE') === 'true') throw new Error('Simulated notification provider outage');\n  console.log(`[LendLoop notify] to=${maskEmail(n.recipientEmail)} subject=\"${n.subject}\"`);\n  return 'mock-log';\n}\nconst r = await withRetry(send);\nreturn [{ json: {\n  eventId: n.eventId,\n  loanId: n.loanId,\n  status: r.ok ? 'sent' : 'failed',\n  channel: r.ok ? r.value : 'mock-log',\n  detail: r.ok ? `${n.eventType} after ${r.attempts} attempt(s)` : r.error,\n} }];"
+      },
+      "name": "Send notification (mock)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        200
+      ],
+      "id": "send-notification-mock"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Config: n8n Variables ($vars, n8n Cloud) first, then environment ($env, self-hosted).\nfunction cfg(name) {\n  try { if (typeof $vars !== 'undefined' && $vars[name]) return $vars[name]; } catch (e) {}\n  try { if ($env[name]) return $env[name]; } catch (e) {}\n  return undefined;\n}\n\n// HMAC-SHA256 request signing for calls to Convex (same scheme as convex/lib/hmac.ts).\n// The secret lives in the n8n environment, never in this workflow JSON.\nfunction signFor(method, path, body) {\n  const crypto = require('crypto');\n  const secret = cfg('LENDLOOP_API_SECRET');\n  if (!secret) throw new Error('LENDLOOP_API_SECRET is not set (n8n Variable or env var)');\n  const timestamp = Math.floor(Date.now() / 1000).toString();\n  const hex = crypto.createHmac('sha256', secret).update(`${timestamp}.${method}.${path}.${body}`).digest('hex');\n  const base = cfg('LENDLOOP_CONVEX_SITE_URL');\n  if (!base) throw new Error('LENDLOOP_CONVEX_SITE_URL is not set (n8n Variable or env var)');\n  return { timestamp, signature: `v1=${hex}`, url: base.replace(/\\/$/, '') + path };\n}\n\nconst r = $input.first().json;\nconst body = JSON.stringify({\n  idempotencyKey: `notification:${r.eventId}`, // same key on every retry -> one row in Convex\n  loanId: r.loanId,\n  kind: 'notification',\n  status: r.status,\n  channel: r.channel,\n  detail: r.detail,\n});\nreturn [{ json: { ...signFor('POST', '/n8n/automation-events', body), body, status: r.status, detail: r.detail } }];"
+      },
+      "name": "Sign write-back",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        200
+      ],
+      "id": "sign-write-back"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-lendloop-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-lendloop-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}"
+      },
+      "name": "Record in Convex",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        200
+      ],
+      "id": "record-in-convex",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "notification-sent?-c",
+              "leftValue": "={{ $('Sign write-back').first().json.status === 'sent' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Notification sent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        200
+      ],
+      "id": "notification-sent"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "name": "Ack (200)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        100
+      ],
+      "id": "ack-200"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": false } }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "name": "Nack (502) – Convex will retry",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        300
+      ],
+      "id": "nack-502"
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'Notification failed: ' + $('Sign write-back').first().json.detail }}"
+      },
+      "name": "Fail execution",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1980,
+        300
+      ],
+      "id": "fail-execution"
+    }
+  ],
+  "connections": {
+    "Loan event webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify signature": {
+      "main": [
+        [
+          {
+            "node": "Signature valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signature valid?": {
+      "main": [
+        [
+          {
+            "node": "Compose message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject (401)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose message": {
+      "main": [
+        [
+          {
+            "node": "Send notification (mock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send notification (mock)": {
+      "main": [
+        [
+          {
+            "node": "Sign write-back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign write-back": {
+      "main": [
+        [
+          {
+            "node": "Record in Convex",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record in Convex": {
+      "main": [
+        [
+          {
+            "node": "Notification sent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notification sent?": {
+      "main": [
+        [
+          {
+            "node": "Ack (200)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nack (502) – Convex will retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nack (502) – Convex will retry": {
+      "main": [
+        [
+          {
+            "node": "Fail execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
