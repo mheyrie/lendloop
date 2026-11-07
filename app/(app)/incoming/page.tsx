@@ -14,7 +14,10 @@ export default function IncomingPage() {
   return (
     <>
       <div className="page-head">
-        <h1>Incoming requests</h1>
+        <div>
+          <h1>Incoming requests</h1>
+          <p className="subtitle">Neighbors who’d like to borrow your tools.</p>
+        </div>
       </div>
       <LoanList
         loans={loans}

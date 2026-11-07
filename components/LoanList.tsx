@@ -4,6 +4,7 @@ import type { FunctionReturnType } from "convex/server";
 import type { ReactNode } from "react";
 import type { api } from "@/convex/_generated/api";
 import { categoryLabel } from "@/convex/lib/constants";
+import { categoryIcon } from "@/lib/categoryIcons";
 import { formatRange } from "@/lib/format";
 import { ActivityLine, Empty, Loading, StatusPill, TrustedBadge } from "./ui";
 
@@ -25,7 +26,8 @@ export function LoanList({
   return (
     <div className="list">
       {loans.map((loan) => (
-        <div key={loan._id} className="list-row">
+        <div key={loan._id} className={`list-row${loan.overdue ? " row-alert" : ""}`}>
+          <span className="icon-tile" aria-hidden>{loan.tool ? categoryIcon(loan.tool.category) : "📦"}</span>
           <div className="grow">
             <strong>{loan.tool?.name ?? "Removed tool"}</strong>
             {loan.tool?.removed && <span className="meta"> (listing removed)</span>}

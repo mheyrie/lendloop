@@ -23,7 +23,10 @@ export default function AdminPage() {
   return (
     <>
       <div className="page-head">
-        <h1>Admin</h1>
+        <div>
+          <h1>Admin</h1>
+          <p className="subtitle">Moderate listings, trust lenders, and watch the automations.</p>
+        </div>
       </div>
       <div className="chips">
         {TABS.map((t) => (

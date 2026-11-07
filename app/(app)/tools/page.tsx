@@ -6,6 +6,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { CATEGORIES, LIMITS, categoryLabel, conditionLabel, type Category } from "@/convex/lib/constants";
 import { AvailabilityPill, Empty, Loading, StatusPill, TrustedBadge } from "@/components/ui";
+import { categoryIcon } from "@/lib/categoryIcons";
 import { errorMessage, formatRange, todayISO } from "@/lib/format";
 
 export default function BrowsePage() {
@@ -15,13 +16,16 @@ export default function BrowsePage() {
   return (
     <>
       <div className="page-head">
-        <h1>Browse tools</h1>
+        <div>
+          <h1>Browse tools</h1>
+          <p className="subtitle">Everything your neighbors are happy to lend.</p>
+        </div>
       </div>
       <div className="chips" role="group" aria-label="Filter by category">
         <button className={`chip ${!category ? "chip-on" : ""}`} onClick={() => setCategory(undefined)}>All</button>
         {CATEGORIES.map((c) => (
           <button key={c.value} className={`chip ${category === c.value ? "chip-on" : ""}`} onClick={() => setCategory(c.value)}>
-            {c.label}
+            <span aria-hidden>{categoryIcon(c.value)}</span> {c.label}
           </button>
         ))}
       </div>
@@ -35,9 +39,10 @@ export default function BrowsePage() {
           {tools.map((t) => (
             <article key={t._id} className="card">
               <div className="card-head">
-                <h3>{t.name}</h3>
+                <span className="icon-tile" aria-hidden>{categoryIcon(t.category)}</span>
                 <AvailabilityPill availability={t.availability} />
               </div>
+              <h3>{t.name}</h3>
               <p className="meta">
                 {categoryLabel(t.category)} · {conditionLabel(t.condition)}
               </p>

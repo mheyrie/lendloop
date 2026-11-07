@@ -6,6 +6,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { CATEGORIES, CONDITIONS, LIMITS, categoryLabel, conditionLabel, type Category, type Condition } from "@/convex/lib/constants";
 import { AsyncButton, AvailabilityPill, Empty, Loading } from "@/components/ui";
+import { categoryIcon } from "@/lib/categoryIcons";
 import { errorMessage } from "@/lib/format";
 
 type Draft = { name: string; category: Category; condition: Condition; description: string };
@@ -19,7 +20,10 @@ export default function MyListingsPage() {
   return (
     <>
       <div className="page-head">
-        <h1>My listings</h1>
+        <div>
+          <h1>My listings</h1>
+          <p className="subtitle">Tools you’re offering to the neighborhood.</p>
+        </div>
         {!editing && (
           <button className="btn btn-primary" onClick={() => setEditing({ draft: EMPTY })}>
             + List a tool
@@ -37,6 +41,7 @@ export default function MyListingsPage() {
         <div className="list">
           {tools.map((t) => (
             <div key={t._id} className="list-row">
+              <span className="icon-tile" aria-hidden>{categoryIcon(t.category)}</span>
               <div className="grow">
                 <strong>{t.name}</strong>
                 <p className="meta">

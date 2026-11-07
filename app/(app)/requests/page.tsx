@@ -11,7 +11,10 @@ export default function MyRequestsPage() {
   return (
     <>
       <div className="page-head">
-        <h1>My requests</h1>
+        <div>
+          <h1>My requests</h1>
+          <p className="subtitle">Things you’ve asked to borrow.</p>
+        </div>
       </div>
       <LoanList
         loans={loans}

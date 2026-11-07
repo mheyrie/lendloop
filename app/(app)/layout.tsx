@@ -40,6 +40,8 @@ function EnsureUser({ children }: { children: ReactNode }) {
 function Nav() {
   const pathname = usePathname();
   const me = useQuery(api.users.me);
+  const incoming = useQuery(api.loans.incoming, me ? {} : "skip");
+  const pending = incoming?.filter((l) => l.status === "pending").length ?? 0;
   const links = me?.role === "admin" ? [...NAV, { href: "/admin", label: "Admin" }] : NAV;
   return (
     <header className="topbar">
@@ -50,6 +52,7 @@ function Nav() {
         {links.map((l) => (
           <Link key={l.href} href={l.href} className={pathname.startsWith(l.href) ? "active" : undefined}>
             {l.label}
+            {l.href === "/incoming" && pending > 0 && <span className="nav-badge" aria-label={`${pending} pending`}>{pending}</span>}
           </Link>
         ))}
       </nav>
