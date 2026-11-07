@@ -126,6 +126,8 @@ npx convex env list   # copy the two values for the n8n step
 
 ### 4a. n8n Cloud
 
+> n8n Variables need a Pro or Enterprise plan. On other plans, use the self-hosted option (4b).
+
 1. **Variables** (Overview → Variables), using the values from step 3:
    `LENDLOOP_N8N_WEBHOOK_SECRET`, `LENDLOOP_API_SECRET`, and `LENDLOOP_CONVEX_SITE_URL` (your `https://<deployment>.convex.site`).
    n8n Cloud blocks `$env` in Code nodes, so the workflows read `$vars` first and fall back to `$env`.
@@ -149,7 +151,15 @@ docker compose exec n8n n8n update:workflow --id=LendLoopOverdueReminders --acti
 docker compose restart n8n        # then create the owner account at http://localhost:5678
 ```
 
-A Convex **cloud** deployment can't reach `localhost:5678`. Either use n8n Cloud, or expose n8n with a tunnel (e.g. `cloudflared tunnel --url http://localhost:5678`) and use that URL for `N8N_LOAN_EVENTS_WEBHOOK_URL`. A **local** Convex backend (`CONVEX_AGENT_MODE=anonymous npx convex dev`) can call `http://localhost:5678/...` directly. n8n reaches it at `http://host.docker.internal:3211`.
+A Convex **cloud** deployment can't reach `localhost:5678`. Calls from n8n to Convex work without any tunnel. For Convex → n8n webhooks, start the opt-in Cloudflare quick tunnel and point Convex at it:
+
+```bash
+docker compose --profile tunnel up -d
+docker compose logs tunnel | grep trycloudflare     # → https://<random>.trycloudflare.com
+npx convex env set N8N_LOAN_EVENTS_WEBHOOK_URL https://<random>.trycloudflare.com/webhook/lendloop-loan-events
+```
+
+The quick-tunnel URL changes every time the tunnel restarts. Stop it with `docker compose --profile tunnel down`. A **local** Convex backend (`CONVEX_AGENT_MODE=anonymous npx convex dev`) can call `http://localhost:5678/...` directly. n8n reaches it at `http://host.docker.internal:3211`.
 
 ### 5. Run it
 
