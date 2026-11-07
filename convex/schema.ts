@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {

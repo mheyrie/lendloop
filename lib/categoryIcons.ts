@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 // UI-only decoration for categories (kept out of the shared backend constants).
 export const CATEGORY_ICON: Record<string, string> = {
   power_tools: "🪛",

@@ -1,4 +1,5 @@
 "use client";
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { daysBetween } from "./lib/dates";

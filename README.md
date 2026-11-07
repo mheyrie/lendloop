@@ -4,7 +4,9 @@
 
 LendLoop is a neighborhood tool-lending board. Neighbors list tools they're willing to lend, request to borrow for a date range, and approve, decline or close out loans. n8n handles the notifications and the daily overdue reminders.
 
-**Stack:** Next.js 15 (App Router) · Clerk · Convex · n8n · TypeScript
+> © 2026 **Mheyrie**. All rights reserved. This code is shared with Fluence International **only to evaluate my application**. Any other use, copying or redistribution needs my written permission (see [LICENSE](LICENSE)).
+
+**Stack:** Next.js 15 (App Router) · Clerk · Convex · n8n · TypeScript · Motion (Framer Motion)
 
 ---
 

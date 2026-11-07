@@ -192,7 +192,7 @@ label.inline select { width: auto; margin: 0; }
 }
 .grid .card:hover { box-shadow: var(--shadow-lift); transform: translateY(-2px); }
 .card h3 { font-size: 1.05rem; margin-top: 0.4rem; }
-.card > .btn { align-self: flex-start; margin-top: auto; }
+.card > .btn { align-self: flex-start; margin-top: 0.75rem; }
 .card > .btn:first-of-type { margin-top: 0.75rem; }
 .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
 .icon-tile {
@@ -244,3 +244,18 @@ label.inline select { width: auto; margin: 0; }
   .topbar nav { order: 3; flex-basis: 100%; }
   .topbar .brand { flex: 1; }
 }
+
+/* ---------- motion support ---------- */
+.topbar nav a { position: relative; }
+.topbar nav a.active { background: transparent; }
+.nav-pill { position: absolute; inset: 0; border-radius: 999px; background: var(--accent); z-index: 0; }
+.nav-label, .topbar nav a .nav-badge { position: relative; z-index: 1; }
+.chip { position: relative; overflow: hidden; }
+.chip-on, .chip-on:hover { background: var(--surface); color: var(--bg); border-color: var(--text); }
+.chip-bg { position: absolute; inset: 0; background: var(--text); border-radius: 999px; z-index: 0; }
+.chip-label { position: relative; z-index: 1; }
+.grid .card:hover { transform: none; }
+.card-cta { align-self: flex-start; margin-top: 0.75rem; }
+.tag { animation: none; cursor: grab; }
+.tag:active { cursor: grabbing; }
+.app-foot { text-align: center; color: var(--muted); font-size: 0.8rem; padding: 0 16px 2rem; }

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 /**
  * HMAC-SHA256 helpers (Web Crypto, works in the default Convex runtime).
  *

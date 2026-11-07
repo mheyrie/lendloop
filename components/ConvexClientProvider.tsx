@@ -1,4 +1,5 @@
 "use client";
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 
 import { useAuth } from "@clerk/nextjs";
 import { ConvexReactClient } from "convex/react";

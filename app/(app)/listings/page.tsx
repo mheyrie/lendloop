@@ -1,11 +1,14 @@
 "use client";
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 
 import { useMutation, useQuery } from "convex/react";
+import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { CATEGORIES, CONDITIONS, LIMITS, categoryLabel, conditionLabel, type Category, type Condition } from "@/convex/lib/constants";
 import { AsyncButton, AvailabilityPill, Empty, Loading } from "@/components/ui";
+import { rowMotion } from "@/components/motion";
 import { categoryIcon } from "@/lib/categoryIcons";
 import { errorMessage } from "@/lib/format";
 
@@ -31,7 +34,19 @@ export default function MyListingsPage() {
         )}
       </div>
 
-      {editing && <ToolForm key={editing.id ?? "new"} toolId={editing.id} initial={editing.draft} onDone={() => setEditing(null)} />}
+      <AnimatePresence mode="wait">
+        {editing && (
+          <motion.div
+            key={editing.id ?? "new"}
+            initial={{ opacity: 0, y: -12, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, y: -8, height: 0 }}
+            style={{ overflow: "hidden" }}
+          >
+            <ToolForm toolId={editing.id} initial={editing.draft} onDone={() => setEditing(null)} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {tools === undefined ? (
         <Loading />
@@ -39,8 +54,9 @@ export default function MyListingsPage() {
         <Empty>You haven&apos;t listed anything yet.</Empty>
       ) : (
         <div className="list">
+          <AnimatePresence initial={true}>
           {tools.map((t) => (
-            <div key={t._id} className="list-row">
+            <motion.div key={t._id} className="list-row" {...rowMotion}>
               <span className="icon-tile" aria-hidden>{categoryIcon(t.category)}</span>
               <div className="grow">
                 <strong>{t.name}</strong>
@@ -59,8 +75,9 @@ export default function MyListingsPage() {
               <AsyncButton variant="danger" confirm={`Delete "${t.name}"? Open requests will be cancelled.`} onClick={() => remove({ toolId: t._id })}>
                 Delete
               </AsyncButton>
-            </div>
+            </motion.div>
           ))}
+          </AnimatePresence>
         </div>
       )}
     </>

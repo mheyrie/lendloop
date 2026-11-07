@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 // UX-level gate only. Real authorization is enforced in every Convex function.

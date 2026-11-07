@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 import { v } from "convex/values";
 
 export const categoryValidator = v.union(

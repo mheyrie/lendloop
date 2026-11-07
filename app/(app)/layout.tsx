@@ -1,11 +1,14 @@
 "use client";
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 
 import { UserButton } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { api } from "@/convex/_generated/api";
+import { MotionProvider } from "@/components/motion";
 import { Loading } from "@/components/ui";
 
 const NAV = [
@@ -51,8 +54,25 @@ function Nav() {
       <nav>
         {links.map((l) => (
           <Link key={l.href} href={l.href} className={pathname.startsWith(l.href) ? "active" : undefined}>
-            {l.label}
-            {l.href === "/incoming" && pending > 0 && <span className="nav-badge" aria-label={`${pending} pending`}>{pending}</span>}
+            {pathname.startsWith(l.href) && (
+              <motion.span layoutId="nav-active" className="nav-pill" transition={{ type: "spring", stiffness: 450, damping: 36 }} />
+            )}
+            <span className="nav-label">{l.label}</span>
+            <AnimatePresence>
+              {l.href === "/incoming" && pending > 0 && (
+                <motion.span
+                  key={pending}
+                  className="nav-badge"
+                  aria-label={`${pending} pending`}
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0 }}
+                  transition={{ type: "spring", stiffness: 600, damping: 20 }}
+                >
+                  {pending}
+                </motion.span>
+              )}
+            </AnimatePresence>
           </Link>
         ))}
       </nav>
@@ -63,11 +83,12 @@ function Nav() {
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <>
+    <MotionProvider>
       <Nav />
       <main className="container">
         <EnsureUser>{children}</EnsureUser>
       </main>
-    </>
+      <footer className="app-foot">LendLoop · © 2026 Mheyrie</footer>
+    </MotionProvider>
   );
 }

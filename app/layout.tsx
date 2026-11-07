@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";

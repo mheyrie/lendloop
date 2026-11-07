@@ -1,4 +1,5 @@
 "use client";
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 
 import { useState, type ReactNode } from "react";
 import { errorMessage, formatDate, timeAgo } from "@/lib/format";

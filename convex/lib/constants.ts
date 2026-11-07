@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 // Shared between the Convex backend and the Next.js UI.
 
 export const CATEGORIES = [

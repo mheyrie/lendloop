@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 # Source of truth for n8n/workflows/*.json (keeps the embedded JS readable/reviewable).
 # Usage: python3 n8n/generate_workflows.py n8n/workflows
 import json, sys, os

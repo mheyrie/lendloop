@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Mheyrie. All rights reserved. Proprietary — see LICENSE.
 import { ConvexError } from "convex/values";
 
 export function errorMessage(e: unknown): string {
